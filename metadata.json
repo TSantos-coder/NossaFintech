@@ -1,0 +1,7 @@
+
+{
+  "name": "NossaFintech",
+  "description": "Sistema de gestão de propostas e usuários baseado em CSV com dashboard e controle de acesso.",
+  "repository": "https://github.com/TSantos-coder/NossaFintech.git",
+  "requestFramePermissions": []
+}
