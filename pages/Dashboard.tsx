@@ -65,8 +65,9 @@ const Dashboard: React.FC = () => {
         inProgressCount++;
       }
 
-      // KPI Específico IN100 (Subconjunto do Fluxo Ativo)
-      if (p.status === 'Aguardando IN100') {
+      // KPI Específico IN100
+      // Regra: Olhar explicitamente a coluna dsc_situicao_emprestimo (csvStatus) = 'Aguardando IN100'
+      if (p.csvStatus === 'Aguardando IN100') {
         in100Count++;
         in100Value += p.value;
       }

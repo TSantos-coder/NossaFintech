@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { User, UserRole } from '../types';
@@ -12,15 +13,28 @@ const Users: React.FC = () => {
     name: '',
     email: '',
     role: 'STANDARD' as UserRole,
-    passwordHash: 'e10adc3949ba59abbe56e057f20f883e' // Default mock hash
+    password: '' 
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.name && formData.email) {
-      addUser(formData);
-      setShowModal(false);
-      setFormData({ name: '', email: '', role: 'STANDARD', passwordHash: 'e10adc3949ba59abbe56e057f20f883e' });
+    if (formData.name && formData.email && formData.password) {
+      const success = await addUser(
+        { 
+          name: formData.name, 
+          email: formData.email, 
+          role: formData.role,
+          passwordHash: '' 
+        }, 
+        formData.password
+      );
+
+      if (success) {
+        setShowModal(false);
+        setFormData({ name: '', email: '', role: 'STANDARD', password: '' });
+      } else {
+        alert("Erro ao criar usuário. Verifique se o email já existe ou a conexão.");
+      }
     }
   };
 
@@ -31,10 +45,7 @@ const Users: React.FC = () => {
   };
 
   const handleResetPassword = (id: string, name: string) => {
-    if (window.confirm(`Deseja resetar a senha do usuário ${name} para "123456"?`)) {
-      resetUserPassword(id);
-      alert('Senha resetada com sucesso para: 123456');
-    }
+    resetUserPassword(id);
   };
 
   return (
@@ -42,7 +53,7 @@ const Users: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
            <h2 className="text-2xl font-bold text-gray-900">Usuários do Sistema</h2>
-           <p className="text-gray-500 text-sm">Controle de acesso e permissões.</p>
+           <p className="text-gray-500 text-sm">Controle de acesso via Supabase.</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -71,7 +82,7 @@ const Users: React.FC = () => {
                 <button
                   onClick={() => handleResetPassword(user.id, user.name)}
                   className="text-gray-300 hover:text-yellow-500 transition-colors p-1"
-                  title="Resetar Senha"
+                  title="Resetar Senha (Info)"
                 >
                   <KeyRound size={18} />
                 </button>
@@ -94,7 +105,7 @@ const Users: React.FC = () => {
                 {user.role === 'MASTER' ? 'Administrador' : 'Vendedor Padrão'}
               </span>
               <span className="text-xs text-gray-400">
-                Criado em {new Date(user.createdAt).toLocaleDateString()}
+                Criado em {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
               </span>
             </div>
           </div>
@@ -128,6 +139,17 @@ const Users: React.FC = () => {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Senha Inicial</label>
+                <input
+                  required
+                  type="password"
+                  className="w-full border rounded-lg px-3 py-2 outline-none focus:border-primary"
+                  value={formData.password}
+                  onChange={e => setFormData({...formData, password: e.target.value})}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Permissão</label>
                 <select
                   className="w-full border rounded-lg px-3 py-2 outline-none focus:border-primary bg-white"
@@ -139,9 +161,9 @@ const Users: React.FC = () => {
                 </select>
               </div>
               
-              <div className="bg-yellow-50 p-3 rounded text-xs text-yellow-700 flex items-start gap-2">
+              <div className="bg-blue-50 p-3 rounded text-xs text-blue-700 flex items-start gap-2">
                 <ShieldAlert size={14} className="mt-0.5" />
-                <p>Senha padrão definida como "123456" para novos usuários. Eles devem alterá-la no primeiro acesso (funcionalidade futura).</p>
+                <p>O usuário será criado no Supabase Auth. Dependendo da configuração, um email de confirmação pode ser enviado.</p>
               </div>
 
               <div className="flex justify-end gap-3 mt-6">

@@ -1,7 +1,7 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
 import { Lock, Mail, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -16,7 +16,6 @@ const Login: React.FC = () => {
   const [resetStatus, setResetStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const { login } = useAuth();
-  const { users } = useData();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -24,16 +23,14 @@ const Login: React.FC = () => {
     setError('');
     setLoading(true);
 
-    // Simulate network delay
-    setTimeout(() => {
-      const success = login(email, password);
-      if (success) {
-        navigate('/dashboard');
-      } else {
-        setError('Credenciais inválidas. Tente admin@sistema.com / 123456');
-        setLoading(false);
-      }
-    }, 800);
+    const result = await login(email, password);
+    
+    if (result.success) {
+      navigate('/dashboard');
+    } else {
+      setError(result.error || 'Erro ao realizar login.');
+      setLoading(false);
+    }
   };
 
   const handleForgotPasswordSubmit = (e: React.FormEvent) => {
@@ -41,13 +38,9 @@ const Login: React.FC = () => {
     setLoading(true);
     setResetStatus('idle');
 
+    // Simulate for UI only since Supabase requires SMTP setup for real emails
     setTimeout(() => {
-      const userExists = users.find(u => u.email === resetEmail);
-      if (userExists) {
-        setResetStatus('success');
-      } else {
-        setResetStatus('error');
-      }
+      setResetStatus('success');
       setLoading(false);
     }, 1500);
   };
@@ -78,7 +71,7 @@ const Login: React.FC = () => {
                 </div>
                 <h3 className="text-xl font-bold text-gray-800">Email enviado!</h3>
                 <p className="text-gray-600 text-sm">
-                  As instruções de recuperação foram enviadas para <strong>{resetEmail}</strong>.
+                  Se o e-mail existir em nossa base, as instruções foram enviadas para <strong>{resetEmail}</strong>.
                 </p>
                 <button
                   onClick={() => {
@@ -208,11 +201,6 @@ const Login: React.FC = () => {
             >
               {loading ? 'Entrando...' : 'Entrar no Sistema'}
             </button>
-
-            <div className="text-center text-xs text-gray-400 mt-4">
-              <p>Admin: admin@sistema.com | 123456</p>
-              <p>User: vendedor@sistema.com | 123456</p>
-            </div>
           </form>
         )}
       </div>

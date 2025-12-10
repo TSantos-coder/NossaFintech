@@ -1,22 +1,53 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { ProposalStatus, Proposal } from '../types';
-import { Search, Filter, Edit2, Check, X, Download, Calendar, ChevronDown, ChevronRight, User, Tag, Clock, History, Building2, FileText } from 'lucide-react';
+import { Search, Filter, Edit2, Check, X, Download, Calendar, ChevronDown, ChevronRight, User, Tag, Clock, History, Building2, FileText, Square, CheckSquare, ListFilter, Trash2 } from 'lucide-react';
 
 const Proposals: React.FC = () => {
   const { proposals, updateProposalObservation } = useData();
   
   // Filtering States
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<ProposalStatus[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  
+  // Batch Search States
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchInput, setBatchInput] = useState('');
+  const [batchKeys, setBatchKeys] = useState<string[]>([]);
+
+  // UI States
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
   
   // Interaction States
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [tempNote, setTempNote] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // List of all available statuses
+  const allStatuses: ProposalStatus[] = [
+    'Pendente',
+    'Em Análise',
+    'Aguardando IN100',
+    'Aprovada',
+    'Pago',
+    'Reprovada',
+    'Cancelada'
+  ];
 
   // Status Badge Helper
   const getStatusStyle = (status: ProposalStatus) => {
@@ -31,20 +62,72 @@ const Proposals: React.FC = () => {
     }
   };
 
+  // Status Description Helper for Tooltip
+  const getStatusDescription = (status: ProposalStatus) => {
+    switch (status) {
+      case 'Pago': return 'O valor foi desembolsado e creditado na conta do cliente.';
+      case 'Aguardando IN100': return 'Aguardando retorno da Dataprev/INSS (IN100) para averbação.';
+      case 'Em Análise': return 'Proposta em análise pela mesa de crédito ou prevenção a fraudes.';
+      case 'Cancelada': return 'Proposta cancelada manualmente ou por decurso de prazo.';
+      case 'Aprovada': return 'Crédito aprovado, aguardando próximas etapas (assinatura/averbação).';
+      case 'Reprovada': return 'Crédito reprovado por política interna ou restrição.';
+      case 'Pendente': return 'Proposta digitada aguardando início do processamento.';
+      default: return 'Status atual da proposta no fluxo de esteira.';
+    }
+  };
+
+  // Process Batch Search Input
+  const handleBatchSearch = () => {
+    if (!batchInput.trim()) {
+      setBatchKeys([]);
+      setIsBatchModalOpen(false);
+      return;
+    }
+    // Split by new line, comma, semicolon or space
+    const keys = batchInput
+      .split(/[\n,;\s]+/)
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+    
+    setBatchKeys(keys);
+    setIsBatchModalOpen(false);
+  };
+
+  const clearBatchSearch = () => {
+    setBatchKeys([]);
+    setBatchInput('');
+  };
+
   // Filter Logic
   const filteredProposals = useMemo(() => {
     return proposals.filter(p => {
-      // Text Search
-      const matchesSearch = 
-        p.client.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        p.salesperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.contractNumber && p.contractNumber.includes(searchTerm)) ||
-        p.id.includes(searchTerm);
-      
-      // Status Filter
-      const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+      // 1. Search Logic (Batch OR Text)
+      let matchesSearch = true;
 
-      // Date Range Filter
+      if (batchKeys.length > 0) {
+        // If Batch is active, check strictly against list (ID or Contract)
+        // Check exact match or inclusion if keys are short? Usually batch is specific.
+        // We'll normalize to lowercase for comparison.
+        const pContract = p.contractNumber?.toLowerCase() || '';
+        const pId = p.id.toLowerCase();
+        
+        matchesSearch = batchKeys.some(key => {
+          const k = key.toLowerCase();
+          return pContract.includes(k) || pId.includes(k);
+        });
+      } else {
+        // Standard Text Search
+        matchesSearch = 
+          p.client.toLowerCase().includes(searchTerm.toLowerCase()) || 
+          p.salesperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (p.contractNumber && p.contractNumber.includes(searchTerm)) ||
+          p.id.includes(searchTerm);
+      }
+      
+      // 2. Status Filter
+      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(p.status);
+
+      // 3. Date Range Filter
       let matchesDate = true;
       if (startDate || endDate) {
         const propDate = new Date(p.date).setHours(0, 0, 0, 0);
@@ -57,9 +140,17 @@ const Proposals: React.FC = () => {
 
       return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [proposals, searchTerm, statusFilter, startDate, endDate]);
+  }, [proposals, searchTerm, selectedStatuses, startDate, endDate, batchKeys]);
 
   // Handlers
+  const toggleStatusSelection = (status: ProposalStatus) => {
+    setSelectedStatuses(prev => 
+      prev.includes(status) 
+        ? prev.filter(s => s !== status) 
+        : [...prev, status]
+    );
+  };
+
   const startEditingNote = (p: Proposal) => {
     setEditingNoteId(p.id);
     setTempNote(p.observation || '');
@@ -77,25 +168,14 @@ const Proposals: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    // 1. Define Headers
     const headers = ['ID,Data,Cliente,Vendedor,Banco,Contrato,Valor,Status,Tipo,Observação'];
-
-    // 2. Map Rows
     const rows = filteredProposals.map(p => {
-      // Helper to escape quotes and wrap in quotes for CSV safety
       const escape = (str: string) => `"${(str || '').replace(/"/g, '""')}"`;
-      
       const dateStr = new Date(p.date).toLocaleDateString('pt-BR');
-      const valueStr = p.value.toFixed(2); // Keep number format simple for Excel
-
-      // EXPORT Raw CSV Status
+      const valueStr = p.value.toFixed(2);
       return `${p.id},${dateStr},${escape(p.client)},${escape(p.salesperson)},${escape(p.bank || '')},${escape(p.contractNumber || '')},${valueStr},${escape(p.csvStatus || p.status)},${p.type},${escape(p.observation)}`;
     });
-
-    // 3. Combine with BOM for Excel UTF-8 support
     const csvContent = '\uFEFF' + [headers, ...rows].join('\n');
-
-    // 4. Trigger Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -107,28 +187,39 @@ const Proposals: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Gerenciamento de Propostas</h2>
       </div>
 
       {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col xl:flex-row gap-4">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col xl:flex-row gap-4 z-20 relative">
         
-        {/* Search Input */}
-        <div className="relative flex-1 w-full min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-          <input
-            type="text"
-            placeholder="Buscar por cliente, vendedor, contrato ou ID..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        {/* Search Group (Text + Batch) */}
+        <div className="flex-1 w-full min-w-[200px] flex gap-2">
+           <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Buscar por cliente, vendedor..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:bg-gray-100 disabled:text-gray-400"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              disabled={batchKeys.length > 0}
+            />
+          </div>
+          <button 
+            onClick={() => setIsBatchModalOpen(true)}
+            className={`flex items-center space-x-2 px-3 py-2 border rounded-lg transition-colors ${batchKeys.length > 0 ? 'bg-primary/10 border-primary text-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            title="Busca em lote (múltiplos contratos)"
+          >
+            <ListFilter size={18} />
+            <span className="hidden sm:inline text-sm font-medium">Lote</span>
+          </button>
         </div>
 
         {/* Filters Group */}
-        <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto overflow-x-auto">
+        <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto overflow-visible">
           
           {/* Date Range */}
           <div className="flex items-center gap-2">
@@ -153,23 +244,58 @@ const Proposals: React.FC = () => {
             </div>
           </div>
 
-          {/* Status Filter */}
-          <div className="flex items-center space-x-2 min-w-[180px]">
-            <Filter size={18} className="text-gray-400 hidden md:block" />
-            <select 
-              className="w-full py-2 px-3 border border-gray-200 rounded-lg focus:ring-primary focus:border-primary outline-none bg-white text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+          {/* Multi-Select Status Filter */}
+          <div className="relative min-w-[200px]" ref={statusDropdownRef}>
+            <button
+              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+              className="w-full flex items-center justify-between py-2 px-3 border border-gray-200 rounded-lg hover:border-gray-300 bg-white text-sm text-gray-700 transition-colors"
             >
-              <option value="all">Todos os Status</option>
-              <option value="Pendente">Pendente</option>
-              <option value="Em Análise">Em Análise</option>
-              <option value="Aguardando IN100">Aguardando IN100</option>
-              <option value="Aprovada">Aprovada</option>
-              <option value="Pago">Pago (Desembolsado)</option>
-              <option value="Reprovada">Reprovada</option>
-              <option value="Cancelada">Cancelada</option>
-            </select>
+              <div className="flex items-center gap-2 overflow-hidden">
+                <Filter size={16} className="text-gray-400 shrink-0" />
+                <span className="truncate">
+                  {selectedStatuses.length === 0 
+                    ? 'Todos os Status' 
+                    : `${selectedStatuses.length} selecionado(s)`}
+                </span>
+              </div>
+              <ChevronDown size={14} className={`text-gray-400 transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Panel */}
+            {isStatusDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-fade-in w-56">
+                <div className="px-3 pb-2 border-b border-gray-50 flex justify-between items-center">
+                  <span className="text-xs font-bold text-gray-400 uppercase">Filtrar Status</span>
+                  {selectedStatuses.length > 0 && (
+                    <button 
+                      onClick={() => setSelectedStatuses([])}
+                      className="text-xs text-primary hover:text-primary-hover"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-60 overflow-y-auto pt-1">
+                  {allStatuses.map((status) => {
+                    const isSelected = selectedStatuses.includes(status);
+                    return (
+                      <div 
+                        key={status}
+                        onClick={() => toggleStatusSelection(status)}
+                        className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer group"
+                      >
+                        <div className={`mr-3 ${isSelected ? 'text-primary' : 'text-gray-300 group-hover:text-gray-400'}`}>
+                          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                        </div>
+                        <span className={`text-sm ${isSelected ? 'font-medium text-gray-900' : 'text-gray-600'}`}>
+                          {status}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Export Button */}
@@ -184,8 +310,28 @@ const Proposals: React.FC = () => {
         </div>
       </div>
 
+      {/* Batch Search Active Indicator */}
+      {batchKeys.length > 0 && (
+         <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-center justify-between animate-fade-in">
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <div className="bg-primary text-brand p-1 rounded">
+                <ListFilter size={16} />
+              </div>
+              <span className="font-semibold">Filtro por lote ativo:</span>
+              <span>Buscando <span className="font-bold">{batchKeys.length}</span> contratos/IDs.</span>
+            </div>
+            <button 
+              onClick={clearBatchSearch}
+              className="text-sm text-red-500 hover:text-red-700 flex items-center gap-1 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={16} />
+              Limpar Filtro
+            </button>
+         </div>
+      )}
+
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden pb-20">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-500 font-medium">
@@ -222,9 +368,19 @@ const Proposals: React.FC = () => {
                         {item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        <span className={`inline-block text-xs font-semibold px-2 py-1 rounded-full border ${getStatusStyle(item.status)}`}>
-                          {item.csvStatus || item.status}
-                        </span>
+                        {/* Tooltip Wrapper */}
+                        <div className="relative group inline-block">
+                          <span className={`inline-block text-xs font-semibold px-2 py-1 rounded-full border cursor-help ${getStatusStyle(item.status)}`}>
+                            {item.csvStatus || item.status}
+                          </span>
+                          
+                          {/* Tooltip Content */}
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-xl z-50 pointer-events-none">
+                            <div className="font-bold mb-1 border-b border-gray-700 pb-1">{item.csvStatus || item.status}</div>
+                            <p className="text-gray-300">{getStatusDescription(item.status)}</p>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4 max-w-xs" onClick={(e) => e.stopPropagation()}>
                         {editingNoteId === item.id ? (
@@ -354,6 +510,52 @@ const Proposals: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Batch Search Modal */}
+      {isBatchModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">Busca em Lote</h3>
+              <button 
+                onClick={() => setIsBatchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-sm text-gray-500 mb-3">
+                Cole a lista de contratos ou IDs que deseja pesquisar. <br/>
+                O sistema aceita separação por vírgula, ponto e vírgula ou quebra de linha.
+              </p>
+              
+              <textarea
+                value={batchInput}
+                onChange={(e) => setBatchInput(e.target.value)}
+                placeholder={"123456789\n987654321\nabc-123\n..."}
+                className="w-full h-48 border border-gray-200 rounded-xl p-4 text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none bg-gray-50"
+              />
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setIsBatchModalOpen(false)}
+                  className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors font-medium text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleBatchSearch}
+                  className="px-6 py-2 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover shadow-md transition-all active:scale-95"
+                >
+                  Filtrar Lista
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

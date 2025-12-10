@@ -57,18 +57,22 @@ const ImportData: React.FC = () => {
     setLoading(true);
     const reader = new FileReader();
     
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string;
       if (text) {
         // Process the CSV
-        const result = importProposalsFromCSV(text);
-        if (result.success) {
-          setStatus({ type: 'success', message: `${result.message} (${result.count} registros)` });
-          setTimeout(() => {
-            navigate('/dashboard');
-          }, 2000);
-        } else {
-          setStatus({ type: 'error', message: result.message });
+        try {
+          const result = await importProposalsFromCSV(text);
+          if (result.success) {
+            setStatus({ type: 'success', message: `${result.message} (${result.count} registros)` });
+            setTimeout(() => {
+              navigate('/dashboard');
+            }, 2000);
+          } else {
+            setStatus({ type: 'error', message: result.message });
+          }
+        } catch (error: any) {
+           setStatus({ type: 'error', message: error.message || 'Erro desconhecido na importação' });
         }
       }
       setLoading(false);
